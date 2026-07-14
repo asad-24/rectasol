@@ -1,26 +1,120 @@
 @import "tailwindcss";
+@import "swiper/css";
+@import "swiper/css/pagination";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #fbfbf7;
+  --foreground: #111319;
+  --recta-ink: #111319;
+  --recta-slate: #5f6673;
+  --recta-muted: #f0f3ef;
+  --recta-orange: #ff6a35;
+  --recta-cyan: #23b6d8;
+  --recta-lime: #a5df55;
+  --recta-violet: #7757ff;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  --color-recta-ink: var(--recta-ink);
+  --color-recta-slate: var(--recta-slate);
+  --color-recta-muted: var(--recta-muted);
+  --color-recta-orange: var(--recta-orange);
+  --color-recta-cyan: var(--recta-cyan);
+  --color-recta-lime: var(--recta-lime);
+  --color-recta-violet: var(--recta-violet);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+  --animate-accordion-down: accordion-down 0.2s ease-out;
+  --animate-accordion-up: accordion-up 0.2s ease-out;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+* {
+  box-sizing: border-box;
+}
+
+html {
+  background: var(--background);
+  scroll-behavior: auto;
 }
 
 body {
+  min-height: 100vh;
+  overflow-x: hidden;
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  letter-spacing: 0;
+}
+
+button,
+a,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+::selection {
+  background: rgba(255, 106, 53, 0.22);
+  color: var(--recta-ink);
+}
+
+.container-page {
+  width: min(100% - 2rem, 1180px);
+  margin-inline: auto;
+}
+
+.section-pad {
+  padding-block: clamp(4.5rem, 8vw, 7.5rem);
+}
+
+.mesh-bg {
+  background:
+    radial-gradient(circle at 15% 15%, rgba(255, 106, 53, 0.18), transparent 26%),
+    radial-gradient(circle at 85% 10%, rgba(35, 182, 216, 0.16), transparent 28%),
+    linear-gradient(135deg, rgba(255, 255, 255, 0.88), rgba(240, 243, 239, 0.72));
+}
+
+.grid-paper {
+  background-image:
+    linear-gradient(rgba(17, 19, 25, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(17, 19, 25, 0.05) 1px, transparent 1px);
+  background-size: 44px 44px;
+}
+
+.swiper-pagination-bullet {
+  background: rgba(17, 19, 25, 0.28) !important;
+  opacity: 1 !important;
+}
+
+.swiper-pagination-bullet-active {
+  background: var(--recta-orange) !important;
+}
+
+@keyframes accordion-down {
+  from {
+    height: 0;
+  }
+  to {
+    height: var(--radix-accordion-content-height);
+  }
+}
+
+@keyframes accordion-up {
+  from {
+    height: var(--radix-accordion-content-height);
+  }
+  to {
+    height: 0;
+  }
 }
