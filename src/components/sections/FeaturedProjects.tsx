@@ -8,6 +8,7 @@ import { caseStudies } from "@/data/site";
 import { Button } from "@/components/ui/button";
 import { ProjectCover } from "./ProjectCover";
 import { SectionHeader } from "./SectionHeader";
+import { useReducedMotion } from "@/components/motion/useReducedMotion";
 
 export function FeaturedProjects() {
   return (
@@ -36,6 +37,7 @@ export function FeaturedProjects() {
 }
 
 function FeaturedProjectCard({ study, index }: { study: (typeof caseStudies)[number]; index: number }) {
+  const reducedMotion = useReducedMotion();
   const [cursor, setCursor] = useState({ x: 0, y: 0 });
   const [hovered, setHovered] = useState(false);
 
@@ -43,6 +45,7 @@ function FeaturedProjectCard({ study, index }: { study: (typeof caseStudies)[num
     <div
       className="relative"
       onMouseMove={(event) => {
+        if (reducedMotion) return;
         const rect = event.currentTarget.getBoundingClientRect();
         setCursor({ x: event.clientX - rect.left, y: event.clientY - rect.top });
       }}
@@ -76,15 +79,16 @@ function FeaturedProjectCard({ study, index }: { study: (typeof caseStudies)[num
               <span className="font-mono text-xs font-black uppercase text-recta-slate">{study.role}</span>
             </div>
           </div>
-          <Link href={`/case-studies/${study.slug}`} className="block transition duration-500 hover:scale-[1.02]">
+          <Link href={`/case-studies/${study.slug}`} className="block transition duration-500 hover:scale-[1.02] motion-reduce:transform-none">
             <ProjectCover image={study.image} title={study.title} category={study.category} status={study.status} />
           </Link>
         </div>
       </div>
       <AnimatePresence>
-        {hovered ? (
+        {hovered && !reducedMotion ? (
           <motion.div
-            className="pointer-events-none absolute z-10 rounded-full bg-recta-orange px-5 py-2 text-sm font-black text-white shadow-lg"
+            aria-hidden="true"
+            className="pointer-events-none absolute z-10 rounded-full bg-recta-orange-strong px-5 py-2 text-sm font-black text-white shadow-lg"
             style={{ left: cursor.x, top: cursor.y, translateX: "-50%", translateY: "-50%" }}
             initial={{ opacity: 0, scale: 0.75 }}
             animate={{ opacity: 1, scale: 1 }}

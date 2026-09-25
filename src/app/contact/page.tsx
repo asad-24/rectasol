@@ -3,19 +3,23 @@ import { ContactForm } from "@/components/forms/ContactForm";
 import { PageIntro } from "@/components/sections/PageIntro";
 import { Card } from "@/components/ui/card";
 import { contactInfo } from "@/data/site";
+import { resolveContactService } from "@/lib/contact-options";
 
 export const metadata: Metadata = {
   title: "Contact",
   description: "Contact RectaSol to plan a website, app, AI automation, SaaS platform, CRM, dashboard, cloud workflow, or digital growth system.",
 };
 
-export default function ContactPage() {
+export default async function ContactPage({ searchParams }: {
+  searchParams: Promise<{ service?: string | string[] }>;
+}) {
+  const service = resolveContactService((await searchParams).service);
   return (
     <>
       <PageIntro
         eyebrow="Contact"
         title="Tell RectaSol what needs to exist, improve, or automate"
-        description="Share the goal, current situation, and the kind of service you need. The API is ready as a validated stub and can connect to SMTP or CRM next."
+        description="Share your goals using the inquiry form below or email hello@rectasol.com. Once your inquiry is received, you will get a reference to keep."
       />
       <section className="section-pad bg-white">
         <div className="container-page mb-12 grid gap-5 md:grid-cols-2 lg:grid-cols-4">
@@ -23,7 +27,7 @@ export default function ContactPage() {
             const Icon = item.icon;
             return (
               <Card key={item.title} className="p-6 text-center">
-                <span className="mx-auto grid size-14 place-items-center rounded-lg bg-recta-orange text-white">
+                <span className="mx-auto grid size-14 place-items-center rounded-lg bg-recta-orange-strong text-white">
                   <Icon className="size-6" />
                 </span>
                 <p className="mt-5 font-mono text-xs font-black uppercase text-recta-slate">{item.title}</p>
@@ -56,7 +60,7 @@ export default function ContactPage() {
               })}
             </div>
           </div>
-          <ContactForm />
+          <ContactForm key={service} initialService={service} />
         </div>
       </section>
     </>

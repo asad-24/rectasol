@@ -24,9 +24,10 @@ export function CaseStudiesExplorer() {
               key={filter}
               type="button"
               onClick={() => setActiveFilter(filter)}
+              aria-pressed={activeFilter === filter}
               className={cn(
                 "rounded-full px-5 py-2 font-mono text-sm font-black transition",
-                activeFilter === filter ? "bg-recta-orange text-white" : "bg-recta-muted text-recta-slate hover:bg-recta-ink hover:text-white",
+                activeFilter === filter ? "bg-recta-orange-strong text-white" : "bg-recta-muted text-recta-slate hover:bg-recta-ink hover:text-white",
               )}
             >
               {filter}

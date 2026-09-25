@@ -40,7 +40,7 @@ export default async function ServiceDetailPage({ params }: { params: Promise<{ 
             <p className="mt-6 max-w-2xl text-lg leading-8 text-recta-slate">{service.description}</p>
             <div className="mt-8 flex flex-col gap-3 sm:flex-row">
               <Button asChild variant="accent" size="lg">
-                <Link href="/contact">
+                <Link href={`/contact?service=${encodeURIComponent(service.slug)}`}>
                   Plan this service
                   <ArrowRight className="size-5" />
                 </Link>
@@ -51,7 +51,7 @@ export default async function ServiceDetailPage({ params }: { params: Promise<{ 
             </div>
           </div>
           <div className="relative h-80 overflow-hidden rounded-lg border border-recta-ink/10 bg-white shadow-2xl">
-            <Image src={service.image} alt={service.title} fill className="object-cover" sizes="(min-width: 1024px) 45vw, 100vw" priority />
+            <Image src={service.image} alt={service.title} fill className="object-cover" sizes="(min-width: 1024px) 45vw, 100vw" preload />
           </div>
         </div>
       </section>
@@ -95,7 +95,7 @@ export default async function ServiceDetailPage({ params }: { params: Promise<{ 
           </Card>
         </div>
       </section>
-      <FinalCTA />
+      <FinalCTA serviceSlug={service.slug} />
     </>
   );
 }

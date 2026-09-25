@@ -9,6 +9,7 @@
   --recta-slate: #5f6673;
   --recta-muted: #f0f3ef;
   --recta-orange: #ff6a35;
+  --recta-orange-strong: #b83b0f;
   --recta-cyan: #23b6d8;
   --recta-lime: #a5df55;
   --recta-violet: #7757ff;
@@ -21,6 +22,7 @@
   --color-recta-slate: var(--recta-slate);
   --color-recta-muted: var(--recta-muted);
   --color-recta-orange: var(--recta-orange);
+  --color-recta-orange-strong: var(--recta-orange-strong);
   --color-recta-cyan: var(--recta-cyan);
   --color-recta-lime: var(--recta-lime);
   --color-recta-violet: var(--recta-violet);
@@ -116,5 +118,31 @@ select {
   }
   to {
     height: 0;
+  }
+}
+
+/* Hidden until hydration opts in. CSS releases the page even if JS stalls. */
+.startup-overlay {
+  display: none;
+  visibility: hidden;
+}
+
+.startup-overlay[data-active="true"] {
+  display: block;
+  visibility: visible;
+  animation: startup-release 4.2s step-end forwards;
+}
+
+@keyframes startup-release {
+  to { visibility: hidden; clip-path: inset(50%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .startup-overlay[data-active="true"] { display: none; }
+  *, *::before, *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
   }
 }

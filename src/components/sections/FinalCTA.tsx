@@ -2,7 +2,7 @@ import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
-export function FinalCTA() {
+export function FinalCTA({ serviceSlug }: { serviceSlug?: string }) {
   return (
     <section className="bg-background py-8">
       <div className="container-page overflow-hidden rounded-lg bg-recta-ink p-8 text-white shadow-2xl sm:p-12 lg:p-16">
@@ -17,7 +17,7 @@ export function FinalCTA() {
             </p>
           </div>
           <Button asChild variant="light" size="lg">
-            <Link href="/contact">
+            <Link href={serviceSlug ? `/contact?service=${encodeURIComponent(serviceSlug)}` : "/contact"}>
               Start with RectaSol
               <ArrowRight className="size-5" />
             </Link>

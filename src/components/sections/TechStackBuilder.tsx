@@ -43,6 +43,7 @@ export function TechStackBuilder() {
                     key={item}
                     type="button"
                     onClick={() => toggle(item)}
+                    aria-label={`Remove ${item} from selected technologies`}
                     className="inline-flex items-center gap-2 rounded-full bg-white px-3 py-2 text-sm font-bold text-recta-ink"
                   >
                     <Check className="size-3 text-recta-orange" />
@@ -75,10 +76,11 @@ export function TechStackBuilder() {
                         key={item}
                         type="button"
                         onClick={() => toggle(item)}
+                        aria-pressed={active}
                         className={cn(
                           "inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-bold transition",
                           active
-                            ? "border-recta-orange bg-recta-orange text-white"
+                            ? "border-recta-orange-strong bg-recta-orange-strong text-white"
                             : "border-recta-ink/10 bg-recta-muted text-recta-slate hover:border-recta-orange hover:text-recta-ink",
                         )}
                       >

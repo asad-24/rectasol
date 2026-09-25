@@ -1,11 +1,25 @@
 "use client";
 
-import { Pagination, Autoplay } from "swiper/modules";
+import { useEffect, useState } from "react";
+import type { Swiper as SwiperInstance } from "swiper";
+import { Pagination, Autoplay, A11y, Keyboard } from "swiper/modules";
 import { Swiper, SwiperSlide } from "swiper/react";
 import { testimonials } from "@/data/site";
 import { SectionHeader } from "./SectionHeader";
+import { useReducedMotion } from "@/components/motion/useReducedMotion";
+import { Button } from "@/components/ui/button";
 
 export function TestimonialsSection() {
+  const reducedMotion = useReducedMotion();
+  const [swiper, setSwiper] = useState<SwiperInstance | null>(null);
+  const [paused, setPaused] = useState(false);
+
+  useEffect(() => {
+    if (!swiper || swiper.destroyed) return;
+    if (reducedMotion || paused) swiper.autoplay.stop();
+    else swiper.autoplay.start();
+    return () => { if (!swiper.destroyed) swiper.autoplay.stop(); };
+  }, [swiper, reducedMotion, paused]);
   return (
     <section className="section-pad bg-recta-ink text-white">
       <div className="container-page">
@@ -22,11 +36,16 @@ export function TestimonialsSection() {
         </div>
         <div className="mt-12 lg:hidden">
           <Swiper
-            modules={[Pagination, Autoplay]}
+            modules={[Pagination, Autoplay, A11y, Keyboard]}
+            onSwiper={setSwiper}
+            onFocusCapture={() => setPaused(true)}
+            onTouchStart={() => setPaused(true)}
+            keyboard={{ enabled: true, onlyInViewport: true }}
+            speed={reducedMotion ? 0 : 300}
             slidesPerView={1.05}
             spaceBetween={16}
             pagination={{ clickable: true }}
-            autoplay={{ delay: 3200, disableOnInteraction: true }}
+            autoplay={reducedMotion || paused ? false : { delay: 3200, disableOnInteraction: true, pauseOnMouseEnter: true }}
             className="pb-12"
           >
             {testimonials.map((item) => (
@@ -35,6 +54,9 @@ export function TestimonialsSection() {
               </SwiperSlide>
             ))}
           </Swiper>
+          {!reducedMotion && <Button type="button" variant="light" className="mt-4" aria-pressed={paused} onClick={() => setPaused((value) => !value)}>
+            {paused ? "Resume testimonials" : "Pause testimonials"}
+          </Button>}
         </div>
       </div>
     </section>

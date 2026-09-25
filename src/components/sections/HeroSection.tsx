@@ -7,8 +7,10 @@ import gsap from "gsap";
 import { Button } from "@/components/ui/button";
 import { TextReveal } from "@/components/motion/TextReveal";
 import { stats } from "@/data/site";
+import { useReducedMotion } from "@/components/motion/useReducedMotion";
 
 export function HeroSection() {
+  const reduced = useReducedMotion();
   const sectionRef = useRef<HTMLElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const glowRef = useRef<HTMLDivElement>(null);
@@ -23,7 +25,6 @@ export function HeroSection() {
     const glow = glowRef.current;
     if (!section || !panel || !glow) return;
 
-    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     const coarse = window.matchMedia("(pointer: coarse)").matches;
     if (reduced || coarse) return;
 
@@ -58,8 +59,12 @@ export function HeroSection() {
     return () => {
       section.removeEventListener("pointermove", onMove);
       section.removeEventListener("pointerleave", onLeave);
+      [panelX, panelY, glowX, glowY].forEach((tween) => tween.tween.kill());
+      gsap.set([panel, glow], { clearProps: "transform" });
+      section.style.setProperty("--hero-x", "50%");
+      section.style.setProperty("--hero-y", "50%");
     };
-  }, []);
+  }, [reduced]);
 
   return (
     <section ref={sectionRef} style={style} className="relative min-h-screen overflow-hidden pt-28 mesh-bg">

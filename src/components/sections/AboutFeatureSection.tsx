@@ -7,6 +7,7 @@ import { ScrollTrigger } from "gsap/ScrollTrigger";
 import { ArrowRight } from "lucide-react";
 import { CountUpNumber } from "@/components/ui/CountUpNumber";
 import { Button } from "@/components/ui/button";
+import { useReducedMotion } from "@/components/motion/useReducedMotion";
 
 gsap.registerPlugin(ScrollTrigger);
 
@@ -16,6 +17,7 @@ export function AboutFeatureSection() {
   const sectionRef = useRef<HTMLElement>(null);
   const headlineRef = useRef<HTMLHeadingElement>(null);
   const [inView, setInView] = useState(false);
+  const reducedMotion = useReducedMotion();
 
   useEffect(() => {
     const section = sectionRef.current;
@@ -23,7 +25,6 @@ export function AboutFeatureSection() {
     if (!section || !heading) return;
 
     const chars = heading.querySelectorAll("[data-about-char]");
-    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
     const ctx = gsap.context(() => {
       ScrollTrigger.create({
@@ -55,7 +56,7 @@ export function AboutFeatureSection() {
     }, section);
 
     return () => ctx.revert();
-  }, []);
+  }, [reducedMotion]);
 
   return (
     <section ref={sectionRef} className="bg-white py-10">

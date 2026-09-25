@@ -4,6 +4,7 @@ import { ReactNode, useEffect, useRef } from "react";
 import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
 import { cn } from "@/lib/utils";
+import { useReducedMotion } from "./useReducedMotion";
 
 gsap.registerPlugin(ScrollTrigger);
 
@@ -17,12 +18,13 @@ export function Reveal({
   delay?: number;
 }) {
   const ref = useRef<HTMLDivElement>(null);
+  const reducedMotion = useReducedMotion();
 
   useEffect(() => {
     const node = ref.current;
     if (!node) return;
 
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    if (reducedMotion) {
       return;
     }
 
@@ -47,7 +49,7 @@ export function Reveal({
     }, node);
 
     return () => ctx.revert();
-  }, [delay]);
+  }, [delay, reducedMotion]);
 
   return (
     <div ref={ref} className={cn("will-change-transform", className)}>

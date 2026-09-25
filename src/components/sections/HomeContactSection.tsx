@@ -19,7 +19,7 @@ export function HomeContactSection() {
               const Icon = item.icon;
               return (
                 <Link key={item.title} href={item.href} className="group flex items-center gap-5 rounded-lg border border-recta-ink/10 bg-background p-5 transition hover:border-recta-orange/40 hover:bg-white">
-                  <span className="grid size-13 shrink-0 place-items-center rounded-md bg-recta-ink text-white transition group-hover:bg-recta-orange">
+                  <span className="grid size-13 shrink-0 place-items-center rounded-md bg-recta-ink text-white transition group-hover:bg-recta-orange-strong">
                     <Icon className="size-5" />
                   </span>
                   <span>

@@ -8,6 +8,8 @@ import { cn } from "@/lib/utils";
 const Sheet = DialogPrimitive.Root;
 const SheetTrigger = DialogPrimitive.Trigger;
 const SheetClose = DialogPrimitive.Close;
+const SheetTitle = DialogPrimitive.Title;
+const SheetDescription = DialogPrimitive.Description;
 
 function SheetContent({ className, children, ...props }: React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content>) {
   return (
@@ -27,4 +29,4 @@ function SheetContent({ className, children, ...props }: React.ComponentPropsWit
   );
 }
 
-export { Sheet, SheetClose, SheetContent, SheetTrigger };
+export { Sheet, SheetClose, SheetContent, SheetTrigger, SheetTitle, SheetDescription };

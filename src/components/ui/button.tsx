@@ -9,8 +9,8 @@ const buttonVariants = cva(
     variants: {
       variant: {
         default: "bg-recta-ink text-white shadow-sm hover:bg-recta-ink/90",
-        accent: "bg-recta-orange text-white shadow-sm hover:bg-[#f65f27]",
-        outline: "border border-recta-ink/15 bg-white text-recta-ink hover:border-recta-orange hover:text-recta-orange",
+        accent: "bg-recta-orange-strong text-white shadow-sm hover:bg-[#96300c]",
+        outline: "border border-recta-ink/15 bg-white text-recta-ink hover:border-recta-orange hover:text-recta-orange-strong",
         ghost: "text-recta-ink hover:bg-recta-muted",
         light: "bg-white text-recta-ink shadow-sm hover:bg-white/90",
       },

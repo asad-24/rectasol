@@ -53,7 +53,7 @@ export default function ServicesPage() {
                     <div className="mt-7 grid gap-3">
                       {service.capabilities.map((feature) => (
                         <div key={feature} className="flex items-center gap-3 text-sm font-bold text-recta-slate">
-                          <span className="grid size-6 place-items-center rounded-md bg-recta-orange text-white">
+                          <span className="grid size-6 place-items-center rounded-md bg-recta-orange-strong text-white">
                             <Check className="size-3.5" />
                           </span>
                           {feature}

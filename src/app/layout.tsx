@@ -6,6 +6,7 @@ import { Header } from "@/components/layout/Header";
 import { Preloader } from "@/components/motion/Preloader";
 import { SmoothScrollProvider } from "@/components/motion/SmoothScrollProvider";
 import "./globals.css";
+import { SITE_URL } from "@/lib/site-url";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -18,7 +19,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  metadataBase: new URL("https://rectasol.com"),
+  metadataBase: new URL(SITE_URL),
   title: {
     default: "RectaSol - Advanced Software, AI Automation & Digital Systems",
     template: "%s | RectaSol",
@@ -38,7 +39,7 @@ export const metadata: Metadata = {
   openGraph: {
     title: "RectaSol - Systems with Sense",
     description: "Advanced software, AI automation, cloud, design, and digital growth systems.",
-    url: "https://rectasol.com",
+    url: SITE_URL,
     siteName: "RectaSol",
     type: "website",
   },
@@ -53,9 +54,8 @@ export default function RootLayout({
     <html
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
-      suppressHydrationWarning
     >
-      <body className="min-h-full" suppressHydrationWarning>
+      <body className="min-h-full">
         <SmoothScrollProvider>
           <Preloader />
           <Header />

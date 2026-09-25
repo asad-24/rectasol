@@ -3,22 +3,23 @@
 import { useEffect, useRef, useState } from "react";
 import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
-import { Pagination } from "swiper/modules";
+import { Pagination, A11y, Keyboard } from "swiper/modules";
 import { Swiper, SwiperSlide } from "swiper/react";
 import { homeStats } from "@/data/site";
 import { CountUpNumber } from "@/components/ui/CountUpNumber";
+import { useReducedMotion } from "@/components/motion/useReducedMotion";
 
 gsap.registerPlugin(ScrollTrigger);
 
 export function PositioningBanner() {
   const sectionRef = useRef<HTMLElement>(null);
   const [inView, setInView] = useState(false);
+  const reducedMotion = useReducedMotion();
 
   useEffect(() => {
     const section = sectionRef.current;
     if (!section) return;
 
-    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     const ctx = gsap.context(() => {
       ScrollTrigger.create({
         trigger: section,
@@ -49,7 +50,7 @@ export function PositioningBanner() {
     }, section);
 
     return () => ctx.revert();
-  }, []);
+  }, [reducedMotion]);
 
   const renderStat = (stat: (typeof homeStats)[number]) => (
     <div className="h-full rounded-lg border border-white/10 bg-white/[0.06] p-6 text-left backdrop-blur">
@@ -80,7 +81,7 @@ export function PositioningBanner() {
         </div>
 
         <div className="mt-12 md:hidden">
-          <Swiper modules={[Pagination]} slidesPerView={1.08} spaceBetween={14} pagination={{ clickable: true }} className="pb-12">
+          <Swiper modules={[Pagination, A11y, Keyboard]} keyboard={{ enabled: true, onlyInViewport: true }} speed={reducedMotion ? 0 : 300} slidesPerView={1.08} spaceBetween={14} pagination={{ clickable: true }} className="pb-12">
             {homeStats.map((stat) => (
               <SwiperSlide key={stat.label}>{renderStat(stat)}</SwiperSlide>
             ))}

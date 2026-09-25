@@ -4,12 +4,13 @@ import { ReactNode, useEffect } from "react";
 import Lenis from "lenis";
 import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
+import { useReducedMotion } from "./useReducedMotion";
 
 gsap.registerPlugin(ScrollTrigger);
 
 export function SmoothScrollProvider({ children }: { children: ReactNode }) {
+  const reducedMotion = useReducedMotion();
   useEffect(() => {
-    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     const coarsePointer = window.matchMedia("(pointer: coarse)").matches;
 
     if (reducedMotion || coarsePointer) {
@@ -29,14 +30,15 @@ export function SmoothScrollProvider({ children }: { children: ReactNode }) {
 
     lenis.on("scroll", ScrollTrigger.update);
     gsap.ticker.add(raf);
-    gsap.ticker.lagSmoothing(0);
-    requestAnimationFrame(() => ScrollTrigger.refresh());
+    const frame = requestAnimationFrame(() => ScrollTrigger.refresh());
 
     return () => {
       gsap.ticker.remove(raf);
+      cancelAnimationFrame(frame);
+      lenis.off("scroll", ScrollTrigger.update);
       lenis.destroy();
     };
-  }, []);
+  }, [reducedMotion]);
 
   return children;
 }

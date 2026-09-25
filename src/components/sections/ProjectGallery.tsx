@@ -43,7 +43,7 @@ export function ProjectGallery({ images, title }: { images: string[]; title: str
     <div>
       <div className="relative overflow-hidden rounded-lg border border-recta-ink/10 bg-recta-muted shadow-xl">
         <div className="relative aspect-[16/10]">
-          <Image src={activeImage} alt={`${title} gallery image`} fill className="object-cover" sizes="100vw" priority />
+          <Image src={activeImage} alt={`${title} gallery image`} fill className="object-cover" sizes="(min-width: 1024px) 60vw, 100vw" loading="eager" />
         </div>
         <div className="absolute bottom-4 right-4 flex gap-2">
           <Button type="button" variant="light" size="icon" onClick={previous} aria-label="Previous image">
@@ -63,6 +63,8 @@ export function ProjectGallery({ images, title }: { images: string[]; title: str
             key={`${image}-${index}`}
             type="button"
             onClick={() => setActiveIndex(index)}
+            aria-label={`Show ${title} image ${index + 1}`}
+            aria-pressed={index === activeIndex}
             className={`relative aspect-[4/3] overflow-hidden rounded-md border ${index === activeIndex ? "border-recta-orange" : "border-recta-ink/10"}`}
           >
             <Image src={image} alt={`${title} thumbnail ${index + 1}`} fill className="object-cover" sizes="160px" />

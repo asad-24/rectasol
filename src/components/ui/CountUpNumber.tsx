@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useReducedMotion } from "@/components/motion/useReducedMotion";
 
 export function CountUpNumber({
   end,
@@ -15,15 +16,10 @@ export function CountUpNumber({
 }) {
   const [value, setValue] = useState(0);
   const frameRef = useRef<number | null>(null);
+  const reducedMotion = useReducedMotion();
 
   useEffect(() => {
-    if (!start) return;
-
-    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    if (reducedMotion) {
-      const timeout = window.setTimeout(() => setValue(end), 0);
-      return () => window.clearTimeout(timeout);
-    }
+    if (!start || reducedMotion) return;
 
     const startTime = performance.now();
     const tick = (now: number) => {
@@ -42,11 +38,11 @@ export function CountUpNumber({
         cancelAnimationFrame(frameRef.current);
       }
     };
-  }, [duration, end, start]);
+  }, [duration, end, start, reducedMotion]);
 
   return (
     <>
-      {value}
+      {reducedMotion ? end : value}
       {suffix}
     </>
   );

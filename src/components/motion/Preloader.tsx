@@ -1,27 +1,24 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import gsap from "gsap";
 
 const STARTUP_STORAGE_KEY = "rectasol-startup-seen";
 
 export function Preloader() {
   const ref = useRef<HTMLDivElement>(null);
-  const [visible, setVisible] = useState(() => {
-    if (typeof window === "undefined") {
-      return true;
-    }
-
-    try {
-      return window.sessionStorage.getItem(STARTUP_STORAGE_KEY) !== "true";
-    } catch {
-      return true;
-    }
-  });
 
   useEffect(() => {
     const node = ref.current;
     if (!node) return;
+
+    const preference = window.matchMedia("(prefers-reduced-motion: reduce)");
+    if (preference.matches) return;
+    try {
+      if (window.sessionStorage.getItem(STARTUP_STORAGE_KEY) === "true") return;
+    } catch {
+      // Storage is optional; the animation still has a CSS release deadline.
+    }
 
     const finish = () => {
       try {
@@ -30,15 +27,8 @@ export function Preloader() {
         // Storage can be unavailable in strict privacy modes; still release the page.
       }
 
-      setVisible(false);
+      delete node.dataset.active;
     };
-
-    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-
-    if (reducedMotion) {
-      const timeout = window.setTimeout(finish, 120);
-      return () => window.clearTimeout(timeout);
-    }
 
     let finished = false;
     const safeFinish = () => {
@@ -47,8 +37,14 @@ export function Preloader() {
       finish();
     };
     const maxReleaseTimeout = window.setTimeout(safeFinish, 4200);
+    preference.addEventListener("change", safeFinish);
+    window.addEventListener("pointerdown", safeFinish, { once: true });
+    window.addEventListener("keydown", safeFinish, { once: true });
+    node.dataset.active = "true";
 
-    const ctx = gsap.context(() => {
+    const ctx = gsap.context(() => {}, node);
+    try {
+      ctx.add(() => {
       const tl = gsap.timeline({
         defaults: { ease: "power3.inOut" },
         onComplete: safeFinish,
@@ -100,26 +96,29 @@ export function Preloader() {
           "-=0.32",
         )
         .to("[data-startup-brand]", { autoAlpha: 0, y: -22, filter: "blur(8px)", duration: 0.44 }, "+=0.42")
-        .to(node, { autoAlpha: 0, duration: 0.5, ease: "sine.out" }, "-=0.1");
-    }, node);
+        .to(node, { opacity: 0, duration: 0.5, ease: "sine.out" }, "-=0.1");
+      });
+    } catch {
+      ctx.revert();
+      safeFinish();
+    }
 
     return () => {
       finished = true;
       window.clearTimeout(maxReleaseTimeout);
+      preference.removeEventListener("change", safeFinish);
+      window.removeEventListener("pointerdown", safeFinish);
+      window.removeEventListener("keydown", safeFinish);
       ctx.revert();
+      delete node.dataset.active;
     };
   }, []);
-
-  if (!visible) {
-    return null;
-  }
 
   return (
     <div
       ref={ref}
-      className="pointer-events-auto fixed inset-0 z-[1000000] overflow-hidden bg-recta-ink text-white"
-      aria-label="RectaSol startup animation"
-      role="status"
+      className="startup-overlay pointer-events-none fixed inset-0 z-[1000000] overflow-hidden bg-recta-ink text-white"
+      aria-hidden="true"
     >
       <div className="absolute inset-0 grid-paper opacity-[0.08]" aria-hidden="true" />
       <div className="absolute left-1/2 top-1/2 size-[34rem] -translate-x-1/2 -translate-y-1/2 rounded-full bg-recta-orange/12 blur-3xl" />

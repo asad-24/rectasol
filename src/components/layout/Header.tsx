@@ -7,7 +7,7 @@ import { Menu } from "lucide-react";
 import { navItems } from "@/data/site";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
+import { Sheet, SheetContent, SheetTrigger, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 import { Logo } from "./Logo";
 
 function isActivePath(pathname: string, href: string) {
@@ -47,9 +47,10 @@ export function Header() {
               <Link
                 key={item.href}
                 href={item.href}
+                aria-current={active ? "page" : undefined}
                 className={cn(
                   "text-sm font-bold transition-colors",
-                  active ? "text-recta-orange" : "text-recta-slate hover:text-recta-ink",
+                  active ? "text-recta-orange-strong" : "text-recta-slate hover:text-recta-ink",
                 )}
               >
                 {item.label}
@@ -72,10 +73,12 @@ export function Header() {
             </Button>
           </SheetTrigger>
           <SheetContent>
+            <SheetTitle className="sr-only">Main navigation</SheetTitle>
+            <SheetDescription className="sr-only">Explore RectaSol services, work, and contact options.</SheetDescription>
             <div className="mb-10">
               <Logo />
             </div>
-            <nav className="grid gap-2">
+            <nav className="grid gap-2" aria-label="Mobile navigation">
               {navItems.map((item) => {
                 const active = isActivePath(pathname, item.href);
 
@@ -83,10 +86,11 @@ export function Header() {
                   <Link
                     key={item.href}
                     href={item.href}
+                    aria-current={active ? "page" : undefined}
                     onClick={() => setMobileMenu({ pathname: item.href, open: false })}
                     className={cn(
                       "rounded-md px-3 py-3 text-base font-bold transition-colors hover:bg-recta-muted",
-                      active ? "text-recta-orange" : "text-recta-ink",
+                      active ? "text-recta-orange-strong" : "text-recta-ink",
                     )}
                   >
                     {item.label}
