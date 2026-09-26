@@ -2,6 +2,8 @@ This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-
 
 Project inquiry setup, environment variables, database migration and verification instructions are in [the Phase 2 guide](docs/phase2-inquiries.md). Use Node.js 22 or later. Configure the inquiry backend before expecting contact submissions to succeed.
 
+Internal admin authentication, inquiry management, first-admin bootstrap and the additional migration are documented in [the Phase 3 guide](docs/phase3-admin.md). Apply and verify that migration before using the admin workspace.
+
 ## Getting Started
 
 First, run the development server:

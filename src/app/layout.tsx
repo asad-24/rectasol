@@ -1,10 +1,5 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
-import { Toaster } from "sonner";
-import { Footer } from "@/components/layout/Footer";
-import { Header } from "@/components/layout/Header";
-import { Preloader } from "@/components/motion/Preloader";
-import { SmoothScrollProvider } from "@/components/motion/SmoothScrollProvider";
 import "./globals.css";
 import { SITE_URL } from "@/lib/site-url";
 
@@ -56,13 +51,7 @@ export default function RootLayout({
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="min-h-full">
-        <SmoothScrollProvider>
-          <Preloader />
-          <Header />
-          <main>{children}</main>
-          <Footer />
-          <Toaster richColors position="top-right" />
-        </SmoothScrollProvider>
+        {children}
       </body>
     </html>
   );
