@@ -4,6 +4,7 @@ import { getInquiry, getInquiryAudit } from "@/lib/server/admin/data";
 import { StatusBadge } from "@/components/admin/StatusBadge";
 import { StatusForm } from "@/components/admin/StatusForm";
 import { formatAdminDate } from "@/components/admin/InquiryTable";
+import { EmailDeliveryStatus } from "@/components/admin/EmailDeliveryStatus";
 
 export default async function InquiryPage({ params }: { params: Promise<{id:string}> }) {
   const { id } = await params;
@@ -18,6 +19,7 @@ export default async function InquiryPage({ params }: { params: Promise<{id:stri
     </header>
     <div className="grid items-start gap-6 lg:grid-cols-[1fr_280px]">
       <div className="space-y-6">
+        <EmailDeliveryStatus id={inquiry.id} />
         <section className="rounded-xl border border-slate-200 bg-white p-6" aria-labelledby="project-context">
           <h2 id="project-context" className="text-lg font-bold">Project context</h2>
           <dl className="mt-5 grid gap-5 sm:grid-cols-2">

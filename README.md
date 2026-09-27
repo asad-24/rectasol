@@ -4,6 +4,8 @@ Project inquiry setup, environment variables, database migration and verificatio
 
 Internal admin authentication, inquiry management, first-admin bootstrap and the additional migration are documented in [the Phase 3 guide](docs/phase3-admin.md). Apply and verify that migration before using the admin workspace.
 
+Durable inquiry email delivery, the Phase 4 migrations, Brevo setup, protected scheduling and manual verification are documented in [the Phase 4 guide](docs/phase4-email.md). Email processing requires separate private configuration and a scheduler.
+
 ## Getting Started
 
 First, run the development server:
