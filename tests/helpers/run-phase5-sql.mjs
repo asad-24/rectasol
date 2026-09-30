@@ -11,7 +11,10 @@ const { PGlite } = require(path.resolve(process.env.PHASE5_PGLITE_PATH));
 const db = new PGlite();
 const root = new URL("../../", import.meta.url);
 const run = async file => {
-  await db.exec(readFileSync(new URL(file, root), "utf8"));
+  const results = await db.exec(readFileSync(new URL(file, root), "utf8"));
+  for (const result of results) for (const row of result.rows ?? []) {
+    for (const value of Object.values(row)) if (typeof value === "string" && value.startsWith("PASS M2 SQL assertions:")) console.log(value);
+  }
   console.log(`PASS ${file}`);
 };
 try {
@@ -47,11 +50,12 @@ try {
     (select jsonb_agg(to_jsonb(t) order by id) from public.email_outbox t) email`)).rows;
   const before = await snapshot();
   await run("supabase/migrations/202609300001_phase5_access.sql");
+  await run("supabase/migrations/202609300002_phase5_crm.sql");
   assert.deepEqual(await snapshot(), before);
   console.log("PASS migration preserves membership, inquiry, audit and email records.");
   // Still pre-bootstrap; remove only synthetic fixtures before rollback-only suites.
   await db.exec("delete from public.admin_audit_events; delete from public.inquiries; delete from public.admin_memberships; delete from auth.users;");
-  for (const name of ["inquiries", "admin_pipeline", "email_outbox", "phase5_access"]) {
+  for (const name of ["inquiries", "admin_pipeline", "email_outbox", "phase5_access", "phase5_crm"]) {
     await run(`supabase/tests/${name}.sql`);
   }
   assert.equal((await db.query("select user_id from public.agency_owner")).rows[0].user_id, null);
@@ -59,5 +63,6 @@ try {
   console.log("PASS rollback; all state was disposable and local. Hosted Auth and concurrency are not emulated.");
 } catch (error) {
   console.error("Local SQL verification failed:", error instanceof Error ? error.message : "Unknown error");
+  if (error.position) console.error("SQL character position:", error.position);
   process.exitCode = 1;
 } finally { await db.close(); }

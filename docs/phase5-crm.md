@@ -277,3 +277,332 @@ These results cover the recorded schedules under READ COMMITTED and the explicit
 REPEATABLE READ conflict case. They do not prove every transaction interleaving,
 hosted Supabase Auth/PostgREST behavior, or future M3 mutation authorization.
 Restricted staff onboarding remains blocked until the M3 permission cutover.
+
+# Phase 5 M2 — CRM Records & Audit
+
+## Scope and purpose
+
+M2 adds the CRM data foundation as operator-maintained tables only. It does not
+expose mutation APIs, admin pages, client portal access, inquiry conversion,
+notes/follow-ups, proposals, contracts, projects, invoices, payments, MFA, or
+restricted-staff authorization. Existing inquiry submission, Brevo outbox and
+Phase 3 admin behavior are unchanged.
+
+The migration is intended to be reviewed and applied by a database operator in
+an isolated rehearsal before any live deployment. No migration has been applied
+to hosted Supabase by this implementation, and no real owner has been activated
+for CRM access.
+
+## Implemented tables
+
+Six tables provide the CRM record foundation:
+
+- `public.crm_contacts` — people records with lifecycle, contact details and
+  assignment.
+- `public.crm_companies` — organization records with lifecycle and assignment.
+- `public.crm_contact_companies` — many-to-many relationships between contacts
+  and companies, with primary-contact semantics and employment end dates.
+- `public.crm_opportunities` — deal records linked to a contact and optional
+  company, with pipeline stage, value and close tracking.
+- `public.crm_inquiry_links` — immutable links between existing inquiries and
+  contacts.
+- `public.crm_audit_events` — transactional, immutable audit history for CRM
+  record changes.
+
+## Relationship model
+
+`crm_contact_companies` implements a many-to-many relationship. Each row stores
+a `contact_id`, `company_id`, optional `job_title`, `is_primary` flag and
+optional `ended_at` timestamp. The unique constraint on `(company_id, contact_id)`
+prevents duplicates. A partial unique index on `company_id` where `is_primary`
+ensures at most one primary contact per company.
+
+`crm_opportunities` references a required `contact_id` and an optional `company_id`.
+When `company_id` is supplied, a foreign key on `(company_id, contact_id)` enforces
+that the opportunity’s contact is currently affiliated with that company through
+`crm_contact_companies` with `ended_at IS NULL`. This prevents opportunities from
+pointing to stale relationships.
+
+`crm_inquiry_links` links an existing `inquiry_id` to a `contact_id`. The table
+is immutable: inserts are allowed, but updates are rejected. A unique constraint
+on `(inquiry_id, contact_id)` prevents duplicate links. The inquiry itself is
+protected by a foreign key with `ON DELETE RESTRICT`, so existing inquiry records
+cannot be removed through the CRM schema.
+
+Assignments use `assigned_to` referencing `public.admin_memberships(user_id)`.
+When an assignment target is inserted or changed, the trigger validates that the
+target membership exists and is active. When a membership is deleted, any
+`assigned_to` reference is cleared to `NULL` automatically by the foreign key
+`ON DELETE SET NULL`.
+
+## CRM lifecycle
+
+### Contacts
+
+The supported contact lifecycle and transitions are:
+
+```
+lead → qualified → client → former_client
+```
+
+Reverse and reactivation transitions:
+
+- `qualified` → `lead`
+- `qualified` → `client`
+- `client` → `former_client`
+- `former_client` → `client`
+- `former_client` → `qualified`
+
+Any other transition raises an exception. The initial lifecycle for a new contact
+must be `lead`.
+
+### Companies
+
+The supported company lifecycle and transitions are:
+
+```
+prospect → client → former_client
+```
+
+Reverse and reactivation transitions:
+
+- `client` → `former_client`
+- `former_client` → `client`
+- `former_client` → `prospect`
+
+Any other transition raises an exception. The initial lifecycle for a new company
+must be `prospect`.
+
+## Opportunity pipeline
+
+Opportunity stages, in pipeline order:
+
+```
+new → contacted → qualified → proposal → won
+                              → lost
+```
+
+Transitions:
+
+- From `new`, `contacted`, `qualified`, `proposal`: may move forward or backward
+  to any other open stage, or close as `won` or `lost`.
+- From `won` or `lost`: must reopen to `qualified` first before any other stage
+  change.
+
+Closing behavior:
+
+- When stage changes to `won` or `lost`, `closed_at` is set to `clock_timestamp()`.
+- When reopening from `won` or `lost` to `qualified`, `closed_at` is cleared.
+- `loss_reason` is required when stage is `lost`; it is cleared when moving out
+  of `lost`.
+
+Inquiry-origin behavior:
+
+- When `source` is `website_inquiry`, `source_inquiry_id` must be supplied and
+  must reference an existing `crm_inquiry_links` row with the same contact.
+- Once set, `source_inquiry_id` is immutable for that opportunity.
+- `source_inquiry_id` must reference an existing inquiry/contact link; it cannot
+  be removed or changed after insert.
+
+Value and currency rules:
+
+- `expected_value` and `currency_code` must both be supplied or both be `NULL`.
+- `expected_value` must be non-negative and cannot be `NaN` or infinite.
+
+## Record integrity
+
+- UUID primary keys generated with `gen_random_uuid()`.
+- `created_at` and `updated_at` are managed by triggers; application code must
+  not supply them.
+- `revision` starts at `0` and increments by `1` on every update.
+- `archived_at` is managed; setting it archives the record, and clearing it
+  restores the record. Edits to an archived record are rejected; the record must
+  be restored before other fields can change.
+- `id` and `created_at` are immutable after insert.
+- Hard deletes and truncates are rejected by statement triggers; CRM history must
+  be archived, not deleted.
+- The `crm_audit_events` table is protected by an additional immutable-history
+  trigger that rejects updates and deletes.
+- Relationship endpoints (`contact_id`, `company_id`) in `crm_contact_companies`
+  are immutable after insert.
+
+## Security and RLS
+
+Row-level security is enabled on all six CRM tables.
+
+Grants:
+
+- `REVOKE ALL` from `public`, `anon`, `authenticated`, `service_role`.
+- `GRANT SELECT` to `authenticated` only.
+- No `INSERT`, `UPDATE`, `DELETE`, `EXECUTE` or application grants are issued
+  for CRM tables or functions.
+
+Access control:
+
+- `anon` — denied (no SELECT grant).
+- `authenticated` non-owner — denied by RLS policy using `phase5_is_owner()`.
+- Legacy `admin` or restricted staff — denied by the same owner-only policy.
+- Designated active owner — `SELECT` only when `phase5_is_owner()` returns true.
+- Application roles — no CRM writes in M2.
+- `service_role` — no CRM application privileges.
+- Database operator — controlled maintenance access through the existing operator
+  workflow; operator writes are attributed as `database_operator` in audit events.
+
+The M1 `phase5_is_owner()` helper enforces that the caller is both the designated
+owner Auth identity and holds an active `super_admin` membership. Broad
+inquiry-admin authorization is not reused for CRM tables.
+
+## Audit architecture
+
+Audit events are generated transactionally by `AFTER INSERT OR UPDATE` triggers
+on every CRM table except `crm_audit_events` itself. The audit trigger inserts
+one row per changed entity revision.
+
+Audit event contents:
+
+- `entity_type` — one of `contact`, `company`, `contact_company`, `opportunity`,
+  `inquiry_link`.
+- `entity_id` — the row’s UUID.
+- `entity_revision` — the row’s revision after the change (`0` for inserts).
+- `action` — `created` or `updated`.
+- `actor_user_id` — `NULL` for operator writes.
+- `actor_kind` — always `database_operator`; never `authenticated_user`.
+- `changed_fields` — sorted list of changed allowed fields.
+- `previous_state` / `new_state` — lifecycle or stage values.
+- `previous_assigned_to` / `new_assigned_to` — assignment changes.
+- `previous_archived` / `new_archived` — archive state changes for assignable
+  entities.
+
+Behavioral guarantees:
+
+- No-op updates (no field change) do not advance revision and do not create audit
+  events.
+- Rollback removes both business rows and audit events atomically.
+- If the audit insert fails, the entire business write transaction fails.
+- Audit history is immutable; updates and deletes on `crm_audit_events` are
+  rejected.
+- JWT claims or `current_setting` are never used to derive the audit actor.
+- No raw email, phone, password, token, IP address, user agent or arbitrary JSON
+  payload is stored in audit events.
+
+## Inquiry integration boundary
+
+M2 provides relationship structure only. It does not:
+
+- convert inquiries to contacts or opportunities automatically,
+- backfill existing inquiries with contacts,
+- modify `submit_inquiry` or inquiry RLS,
+- synchronize inquiry status from CRM changes,
+- modify the Brevo adapter or `email_outbox`,
+- expose inquiry-conversion UI or RPC.
+
+`crm_inquiry_links` is a manual operator/application link between an existing
+inquiry and an existing contact. The inquiry link row is immutable after insert.
+
+## Concurrency strategy
+
+M2 verification uses two isolated local runtimes:
+
+1. **Local PGlite runner** (`tests/helpers/run-phase5-sql.mjs`) — in-memory
+   disposable database. Runs all migrations and SQL suites, verifies preserved
+   business records, and rolls back all state. No URL, password, persistent data
+   directory or network access.
+
+2. **Native PostgreSQL 18 runner** (`tests/helpers/run-phase5-concurrency.mjs`) —
+   initializes its own disposable cluster under a unique temporary directory,
+   binds to 127.0.0.1 on an automatically selected port other than 5432, and
+   verifies the actual server data directory. Each competing transaction uses its
+   own persistent `psql` process with a distinct backend PID. Blocking is verified
+   with `pg_blocking_pids` before releasing the competing transaction.
+
+Locking and serialization:
+
+- CRM writes serialize on the operator-owned singleton via `phase5_crm_prepare_write()`
+  before row-level locks.
+- Assignment validation uses `FOR SHARE` on `admin_memberships`.
+- Parent/company/affiliation validation uses `FOR SHARE` on referenced tables.
+- Owner recovery schedules from M1 are compatible; CRM triggers do not change
+  the recovery lock order.
+
+## Verification record
+
+### Application tests
+
+66 passed, 0 failed.
+
+Includes 53 existing application tests and 13 M2-specific application tests.
+
+### M2 SQL assertions
+
+191 assertions passed on PGlite.
+
+191 assertions passed on native PostgreSQL 18.
+
+### Native concurrency
+
+21 native multi-session scenarios passed on PostgreSQL 18.6.
+
+Genuine independent backend PIDs verified for every competing transaction pair.
+Expected SQLSTATEs observed: `00000`, `23505`, `23514`, `42501`, `40001`, `40P01`.
+
+### SQL suites
+
+- `supabase/tests/inquiries.sql`
+- `supabase/tests/admin_pipeline.sql`
+- `supabase/tests/email_outbox.sql`
+- `supabase/tests/phase5_access.sql`
+- `supabase/tests/phase5_crm.sql`
+
+### TypeScript
+
+PASS — `tsc --noEmit --incremental false` with zero errors.
+
+### ESLint
+
+PASS — `eslint src tests` with zero errors.
+
+### Production build
+
+NOT RE-RUN for M2.
+
+The working-tree Next.js production build was intentionally not re-run. M2
+changes are SQL-only plus a TypeScript types file that does not affect Next.js
+compilation. Re-running the ordinary build in the working tree would load
+`.env.local`, which is prohibited by the safety rules. The M1 documentation
+records a prior isolated build under an allowlisted synthetic copy with mocked
+font responses; that result is preserved in the M1 section above.
+
+### Windows cleanup note
+
+After the native concurrency runner stops its disposable PostgreSQL cluster, the
+final `rmSync` of the temporary cluster directory may log a non-fatal `EPERM`
+warning on Windows. This occurs after all test assertions have already completed
+successfully and after PostgreSQL shutdown, during OS-level temp-directory cleanup.
+The warning does not indicate a test failure, data loss, or cluster issue.
+
+## M3-deferred functionality
+
+The following are explicitly out of scope for M2 and remain deferred:
+
+- Restricted staff authorization cutover.
+- CRM mutation RPCs, server actions or admin UI.
+- Inquiry conversion workflow or automatic contact creation.
+- Notes, follow-ups or activity history.
+- Client portal or provisioning.
+- Proposals, contracts, projects, invoices, payments.
+- Owner MFA or invitation delivery.
+- Retention/erasure policy enforcement.
+
+## Retention
+
+Retention and erasure policy for CRM records remains an owner decision before
+live CRM use. No automated retention period, purge schedule or legal hold is
+implemented in M2.
+
+## Deployment status
+
+- The `202609300002_phase5_crm.sql` migration has **not** been applied to live
+  or hosted Supabase.
+- No real owner was activated for CRM access by this implementation.
+- No production CRM data was created.
+- No commit or push has occurred.

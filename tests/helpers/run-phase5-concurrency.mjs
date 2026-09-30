@@ -2,7 +2,7 @@
 // a binary directory, never a URL, password, existing data directory or port.
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { existsSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import net from "node:net";
 import os from "node:os";
 import path from "node:path";
@@ -155,6 +155,96 @@ async function scenario(name, run) {
   finally { await Promise.all([...sessions].map(session => session.close())); }
 }
 
+
+async function runCrmScenarios() {
+  const contact = "20000000-0000-4000-8000-000000000001";
+  const second = "20000000-0000-4000-8000-000000000002";
+  const company = "20000000-0000-4000-8000-000000000003";
+  const inquiry = "20000000-0000-4000-8000-000000000004";
+  async function fixture() {
+    const db = await database();
+    await sql(db, `insert into public.crm_contacts(id,full_name) values('${contact}','Fixture'),('${second}','Other');
+      insert into public.crm_companies(id,name) values('${company}','Company');
+      insert into public.crm_contact_companies(contact_id,company_id) values('${contact}','${company}'),('${second}','${company}');
+      insert into public.inquiries(id,name,email,service,message,request_hash)
+      values('${inquiry}','Fixture','fixture@example.invalid','web-applications','Synthetic M2 concurrency inquiry.',repeat('e',64));`);
+    return db;
+  }
+  async function auditSafe(db) {
+    assert.equal(await sql(db, `select not exists(
+      select 1 from public.crm_contacts c where
+        (select count(*) from public.crm_audit_events a where a.entity_type='contact' and a.entity_id=c.id) <> c.revision+1
+        or not exists(select 1 from public.crm_audit_events a where a.entity_type='contact' and a.entity_id=c.id and a.entity_revision=c.revision)
+      );`), "t");
+  }
+  const cases = [
+    ["same-email inserts", "insert into public.crm_contacts(full_name,email) values('First','race@example.invalid');",
+      "insert into public.crm_contacts(full_name,email) values('Second','race@example.invalid');", "23505",
+      "select count(*)=1 from public.crm_contacts where email='race@example.invalid';"],
+    ["competing primary contacts",
+      `update public.crm_contact_companies set is_primary=true where contact_id='${contact}';`,
+      `update public.crm_contact_companies set is_primary=true where contact_id='${second}';`, "23505",
+      "select count(*)=1 from public.crm_contact_companies where is_primary;"],
+    ["duplicate inquiry links",
+      `insert into public.crm_inquiry_links(inquiry_id,contact_id) values('${inquiry}','${contact}');`,
+      `insert into public.crm_inquiry_links(inquiry_id,contact_id) values('${inquiry}','${second}');`, "23505",
+      `select count(*)=1 and bool_and(contact_id='${contact}') from public.crm_inquiry_links;`],
+    ["revocation before assignment",
+      `update public.admin_memberships set active=false where user_id='${staff}';`,
+      `update public.crm_contacts set assigned_to='${staff}' where id='${contact}';`, "23514",
+      `select assigned_to is null from public.crm_contacts where id='${contact}';`],
+    ["assignment before membership deletion",
+      `update public.crm_contacts set assigned_to='${staff}' where id='${contact}';`,
+      `delete from public.admin_memberships where user_id='${staff}';`, "00000",
+      `select assigned_to is null from public.crm_contacts where id='${contact}';`],
+    ["parent archive before new reference",
+      `update public.crm_contacts set archived_at=clock_timestamp() where id='${contact}';`,
+      `insert into public.crm_opportunities(title,contact_id) values('Invalid parent','${contact}');`, "23514",
+      "select count(*)=0 from public.crm_opportunities;"],
+    ["concurrent revisions",
+      `update public.crm_contacts set full_name='First edit' where id='${contact}';`,
+      `update public.crm_contacts set full_name='Second edit' where id='${contact}';`, "00000",
+      `select revision=2 and full_name='Second edit' from public.crm_contacts where id='${contact}';`],
+  ];
+  for (const [name, first, next, expected, finalQuery] of cases) await scenario("M2 " + name, async () => {
+    const db = await fixture(), [a, b] = await pair(db);
+    await a.ok("begin;"); await b.ok("begin;");
+    await a.ok(first);
+    const pending = b.query(next);
+    await blocked(db, b, a); await a.ok("commit;");
+    await state(pending, expected);
+    await b.ok(expected === "00000" ? "commit;" : "rollback;");
+    assert.equal(await sql(db, finalQuery), "t");
+    await auditSafe(db); await invariant(db);
+  });
+  await scenario("M2 rollback removes audit and unblocks competing insert", async () => {
+    const db = await fixture(), [a, b] = await pair(db);
+    await a.ok("begin;"); await b.ok("begin;");
+    await a.ok("insert into public.crm_contacts(full_name,email) values('Rolled back','rollback@example.invalid');");
+    const pending = b.query("insert into public.crm_contacts(full_name,email) values('Committed','rollback@example.invalid');");
+    await blocked(db, b, a); await a.ok("rollback;");
+    await state(pending, "00000"); await b.ok("commit;");
+    assert.equal(await sql(db, "select full_name from public.crm_contacts where email='rollback@example.invalid';"), "Committed");
+    assert.equal(await sql(db, "select count(*) from public.crm_audit_events where entity_type='contact';"), "3");
+    await auditSafe(db); await invariant(db);
+  });
+  await scenario("M2 owner recovery serializes assignment and rejects deactivated former owner", async () => {
+    const db = await fixture(), [a, b] = await pair(db);
+    await a.ok("begin;"); await b.ok("begin;");
+    await a.ok("lock table public.admin_memberships in share row exclusive mode;");
+    await recovery(a, staff);
+    const pending = b.query(`update public.crm_contacts set assigned_to='${owner}' where id='${contact}';`);
+    await blocked(db, b, a); await a.ok("commit;");
+    await state(pending, "23514"); await b.ok("rollback;");
+    await b.ok(`set request.jwt.claims='{"sub":"${owner}"}'; set role authenticated;`);
+    assert.equal(await b.ok("select count(*) from public.crm_contacts;"), "0");
+    await b.ok("reset role;");
+    await b.ok(`set request.jwt.claims='{"sub":"${staff}"}'; set role authenticated;`);
+    assert.equal(await b.ok("select count(*) from public.crm_contacts;"), "2");
+    await auditSafe(db); await invariant(db, staff);
+  });
+}
+
 try {
   console.log(await command("postgres", ["--version"]));
   port = await new Promise((resolve, reject) => {
@@ -175,11 +265,12 @@ try {
   await sql("m1_template", `create schema auth; create table auth.users(id uuid primary key);
     create function auth.uid() returns uuid language sql stable as $$select (nullif(current_setting('request.jwt.claims',true),'')::jsonb->>'sub')::uuid;$$;
     grant usage on schema auth to anon,authenticated,service_role;`);
-  for (const file of ["202609250001_inquiries.sql", "202609250002_admin_pipeline.sql", "202609260001_email_outbox.sql", "202609260002_brevo_email.sql", "202609300001_phase5_access.sql"]) {
+  for (const file of ["202609250001_inquiries.sql", "202609250002_admin_pipeline.sql", "202609260001_email_outbox.sql", "202609260002_brevo_email.sql", "202609300001_phase5_access.sql", "202609300002_phase5_crm.sql"]) {
     await sql("m1_template", readFileSync(path.join(root, "supabase/migrations", file), "utf8"));
   }
-  for (const name of ["inquiries", "admin_pipeline", "email_outbox", "phase5_access"]) {
-    await sql("m1_template", readFileSync(path.join(root, "supabase/tests", name + ".sql"), "utf8"));
+  for (const name of ["inquiries", "admin_pipeline", "email_outbox", "phase5_access", "phase5_crm"]) {
+    const result = await sql("m1_template", readFileSync(path.join(root, "supabase/tests", name + ".sql"), "utf8"));
+    if (name === "phase5_crm") console.log(result.match(/PASS M2 SQL assertions: \d+/)?.[0]);
     console.log(`PASS native PostgreSQL SQL suite: ${name}`);
   }
 
@@ -318,7 +409,9 @@ try {
     console.log("  expected SQLSTATE 40P01 under intentionally inverted operator lock order");
     await invariant(db);
   });
-  console.log(`PASS ${passed} native multi-session scenarios; four SQL suites. No hosted services contacted.`);
+  // M2 schedules are added below; all databases inherit the exact six migrations.
+  await runCrmScenarios();
+  console.log(`PASS ${passed} native multi-session scenarios; five SQL suites. No hosted services contacted.`);
 } catch (error) {
   console.error(error instanceof Error ? error.message : "Native concurrency verification failed");
   process.exitCode = 1;
@@ -326,6 +419,16 @@ try {
   await Promise.all([...sessions].map(session => session.close().catch(() => {})));
   if (started || existsSync(path.join(dataDir, "postmaster.pid"))) {
     await command("pg_ctl", ["-D", dataDir, "-m", "immediate", "-w", "stop"]);
-    console.log("Disposable cluster stopped. Synthetic data/logs retained in its unique temporary directory.");
+    console.log("Disposable cluster stopped.");
+  }
+  // Delete only this invocation's mkdtemp directory, after its server stopped.
+  try {
+    assert.equal(path.dirname(realpathSync(temporary)), realpathSync(os.tmpdir()));
+    assert.ok(path.basename(temporary).startsWith("rectasol-m1-native-"));
+    assert.equal(realpathSync(temporary), path.resolve(temporary));
+    rmSync(temporary, { recursive: true, force: true });
+    console.log("Disposable cluster data and synthetic logs removed.");
+  } catch (error) {
+    console.error("Warning: could not fully remove disposable cluster directory:", error instanceof Error ? error.message : "Unknown error");
   }
 }
