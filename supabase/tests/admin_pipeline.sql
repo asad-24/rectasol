@@ -2,11 +2,23 @@
 -- No passwords, tokens, or real user identities are used.
 begin;
 create temporary table phase3_fixture (kind text primary key,id uuid) on commit drop;
-insert into phase3_fixture values ('admin',gen_random_uuid()),('member',gen_random_uuid()),('inquiry',gen_random_uuid());
+insert into phase3_fixture values ('admin',gen_random_uuid()),('member',gen_random_uuid()),('inquiry',gen_random_uuid()),('owner',gen_random_uuid());
 grant select on phase3_fixture to authenticated;
-insert into auth.users(id) select id from phase3_fixture where kind in ('admin','member');
+insert into auth.users(id) select id from phase3_fixture where kind in ('admin','member','owner');
 insert into public.admin_memberships(user_id,role)
-  select id,'admin' from phase3_fixture where kind = 'admin';
+  select id,'admin' from phase3_fixture where kind = 'admin'
+  union all
+  select id,'super_admin' from phase3_fixture where kind = 'owner';
+insert into public.staff_roles(key,name) values ('sales','Sales') on conflict (key) do nothing;
+insert into public.staff_role_permissions(role_id,capability,scope)
+  select id,'clients.read','all' from public.staff_roles where key='sales'
+  union all
+  select id,'clients.stage','all' from public.staff_roles where key='sales';
+insert into public.staff_role_assignments(user_id,role_id,assigned_by)
+  select f.id,r.id,(select id from phase3_fixture where kind='admin')
+  from phase3_fixture f cross join public.staff_roles r where f.kind='admin' and r.key='sales';
+select public.phase5_bootstrap_owner((select id from phase3_fixture where kind='owner'));
+set constraints all immediate;
 insert into public.inquiries(id,name,email,service,message,request_hash)
   select id,'Synthetic inquiry','synthetic@example.invalid','web-applications',
     'Non-production rollback-only test inquiry.',repeat('a',64)
@@ -31,7 +43,7 @@ set local role authenticated;
 select set_config('request.jwt.claims',json_build_object('sub',(select id from phase3_fixture where kind='member'),'role','authenticated')::text,true) is not null as claims_configured;
 do $$
 begin
-  if public.is_inquiry_admin() then raise exception 'Non-admin escalated'; end if;
+  if public.phase5_has_capability('clients.read','all') then raise exception 'Non-admin escalated'; end if;
   if exists(select id from public.inquiries) then raise exception 'Non-admin read inquiries'; end if;
   if exists(select id from public.admin_audit_events) then raise exception 'Non-admin read audit'; end if;
   begin
@@ -50,7 +62,7 @@ select set_config('request.jwt.claims',json_build_object('sub',(select id from p
 do $$
 declare v_id uuid := (select id from phase3_fixture where kind='inquiry'); result jsonb;
 begin
-  if not public.is_inquiry_admin() then raise exception 'Admin denied'; end if;
+  if not public.phase5_has_capability('clients.read','all') then raise exception 'Admin denied'; end if;
   if not exists(select id from public.inquiries where id = v_id) then raise exception 'Admin cannot read'; end if;
   perform public.admin_list_inquiries('', 'new', 1);
   perform public.admin_inquiry_counts();
@@ -85,7 +97,7 @@ update public.admin_memberships set active=false where user_id=(select id from p
 set local role authenticated;
 do $$
 begin
-  if public.is_inquiry_admin() then raise exception 'Revoked membership still authorized'; end if;
+  if public.phase5_has_capability('clients.read','all') then raise exception 'Revoked membership still authorized'; end if;
   begin
     perform public.admin_change_inquiry_status((select id from phase3_fixture where kind='inquiry'),'won',1);
     raise exception 'Revoked membership can mutate';

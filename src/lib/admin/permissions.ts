@@ -11,6 +11,7 @@ export const capabilityScopes = {
   "crm.followups.manage": ["assigned", "all"],
   "clients.read": ["assigned", "all"],
   "clients.convert": ["assigned", "all"],
+  "clients.stage": ["all"],
   "reports.crm.read": ["assigned", "all"],
 } as const;
 

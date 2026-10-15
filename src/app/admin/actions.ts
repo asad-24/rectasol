@@ -4,7 +4,7 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { createAdminClient, clearAdminCookies } from "@/lib/server/admin/client";
-import { authenticateAdmin, changeInquiryStatus } from "@/lib/server/admin/operations";
+import { authenticateAdmin, changeInquiryStatus, convertInquiry } from "@/lib/server/admin/operations";
 import { readActionFields, type AdminFeedback } from "@/lib/admin/validation";
 import { SITE_URL } from "@/lib/site-url";
 
@@ -41,6 +41,15 @@ export async function statusAction(_previous: AdminFeedback, form: FormData): Pr
   try { result = await changeInquiryStatus(await createAdminClient(true), readActionFields(form)); }
   catch { result = { ok: false, message: "The service is temporarily unavailable. Please try again." }; }
   // Also refresh conflicts/timeouts so the UI can recover a transaction that committed.
+  revalidatePath("/admin", "layout");
+  return result;
+}
+
+export async function convertAction(_previous: AdminFeedback, form: FormData): Promise<AdminFeedback> {
+  if (!await validOrigin()) return { ok: false, message: "Please submit changes from this website." };
+  let result: AdminFeedback;
+  try { result = await convertInquiry(await createAdminClient(true), readActionFields(form)); }
+  catch { result = { ok: false, message: "Conversion is temporarily unavailable. Please try again." }; }
   revalidatePath("/admin", "layout");
   return result;
 }

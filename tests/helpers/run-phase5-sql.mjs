@@ -51,11 +51,12 @@ try {
   const before = await snapshot();
   await run("supabase/migrations/202609300001_phase5_access.sql");
   await run("supabase/migrations/202609300002_phase5_crm.sql");
+  await run("supabase/migrations/202609300003_phase5_inquiry_permissions.sql");
   assert.deepEqual(await snapshot(), before);
   console.log("PASS migration preserves membership, inquiry, audit and email records.");
   // Still pre-bootstrap; remove only synthetic fixtures before rollback-only suites.
   await db.exec("delete from public.admin_audit_events; delete from public.inquiries; delete from public.admin_memberships; delete from auth.users;");
-  for (const name of ["inquiries", "admin_pipeline", "email_outbox", "phase5_access", "phase5_crm"]) {
+  for (const name of ["inquiries", "admin_pipeline", "email_outbox", "phase5_access", "phase5_crm", "phase5_inquiry_permissions"]) {
     await run(`supabase/tests/${name}.sql`);
   }
   assert.equal((await db.query("select user_id from public.agency_owner")).rows[0].user_id, null);

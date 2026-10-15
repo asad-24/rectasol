@@ -39,7 +39,7 @@ set local role authenticated;
 select set_config('request.jwt.claims',json_build_object('sub',(select id from phase5_fixture where kind='owner'))::text,true) is not null;
 select pg_temp.assert_ok(not public.phase5_is_owner(),'Legacy role became owner before bootstrap');
 select pg_temp.assert_ok(not public.phase5_has_capability('crm.read','all'),'Pre-bootstrap grant');
-select pg_temp.assert_ok(public.is_inquiry_admin(),'Legacy admin compatibility lost');
+select pg_temp.expect_error('select public.is_inquiry_admin()','42501');
 select pg_temp.assert_ok(not (public.phase5_current_permissions()->>'active')::boolean,'Pre-bootstrap projection');
 select pg_temp.expect_error('select public.phase5_bootstrap_owner((select id from phase5_fixture where kind=''owner''))','42501');
 reset role;

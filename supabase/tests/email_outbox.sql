@@ -7,9 +7,21 @@ delete from public.email_outbox;
 delete from public.inquiry_rate_buckets;
 create temporary table phase4_state (name text primary key,value jsonb) on commit drop;
 grant select,insert,update on phase4_state to service_role,authenticated;
-insert into phase4_state values ('admin',to_jsonb(gen_random_uuid())),('member',to_jsonb(gen_random_uuid()));
-insert into auth.users(id) select (value #>> '{}')::uuid from phase4_state where name in ('admin','member');
-insert into public.admin_memberships(user_id,role) select (value #>> '{}')::uuid,'admin' from phase4_state where name='admin';
+insert into phase4_state values ('admin',to_jsonb(gen_random_uuid())),('member',to_jsonb(gen_random_uuid())),('owner',to_jsonb(gen_random_uuid()));
+grant select on phase4_state to authenticated;
+insert into auth.users(id) select (value #>> '{}')::uuid from phase4_state where name in ('admin','member','owner');
+insert into public.admin_memberships(user_id,role)
+  select (value #>> '{}')::uuid,'super_admin' from phase4_state where name='owner'
+  union all
+  select (value #>> '{}')::uuid,'admin' from phase4_state where name='admin';
+insert into public.staff_roles(key,name) values ('sales','Sales') on conflict (key) do nothing;
+insert into public.staff_role_permissions(role_id,capability,scope)
+  select id,'clients.read','all' from public.staff_roles where key='sales';
+insert into public.staff_role_assignments(user_id,role_id,assigned_by)
+  select (value #>> '{}')::uuid,r.id,(select (value #>> '{}')::uuid from phase4_state where name='owner')
+  from phase4_state cross join public.staff_roles r where phase4_state.name='admin' and r.key='sales';
+select public.phase5_bootstrap_owner((select (value #>> '{}')::uuid from phase4_state where name='owner'));
+set constraints all immediate;
 
 do $$
 declare role_name text; signature text;
@@ -80,7 +92,7 @@ reset role;
 set local role authenticated;
 select set_config('request.jwt.claims',json_build_object('sub',(select value #>> '{}' from phase4_state where name='member'),'role','authenticated')::text,true) is not null as claims_configured;
 do $$ begin
-  if exists(select id from public.email_outbox) then raise exception 'Non-admin can read'; end if;
+  if (select count(*) from public.email_outbox) <> 0 then raise exception 'Non-admin can read'; end if;
   begin perform public.claim_email_delivery(); raise exception 'Member worker allowed'; exception when insufficient_privilege then null; end;
   begin update public.email_outbox set status='failed'; raise exception 'Browser write allowed'; exception when insufficient_privilege then null; end;
 end; $$;

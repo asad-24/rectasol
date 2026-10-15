@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { getInquiry, getInquiryAudit } from "@/lib/server/admin/data";
 import { StatusBadge } from "@/components/admin/StatusBadge";
 import { StatusForm } from "@/components/admin/StatusForm";
+import { ConvertForm } from "@/components/admin/ConvertForm";
 import { formatAdminDate } from "@/components/admin/InquiryTable";
 import { EmailDeliveryStatus } from "@/components/admin/EmailDeliveryStatus";
 
@@ -39,9 +40,16 @@ export default async function InquiryPage({ params }: { params: Promise<{id:stri
             </li>)}</ol>}
         </section>
       </div>
-      <section className="rounded-xl border border-slate-200 bg-white p-6" aria-labelledby="manage-status">
-        <h2 id="manage-status" className="mb-5 text-lg font-bold">Manage pipeline</h2><StatusForm id={inquiry.id} status={inquiry.status} revision={inquiry.revision} />
-      </section>
+      <div className="space-y-6">
+        <section className="rounded-xl border border-slate-200 bg-white p-6" aria-labelledby="manage-status">
+          <h2 id="manage-status" className="mb-5 text-lg font-bold">Manage pipeline</h2>
+          <StatusForm id={inquiry.id} status={inquiry.status} revision={inquiry.revision} />
+        </section>
+        <section className="rounded-xl border border-slate-200 bg-white p-6" aria-labelledby="convert-inquiry">
+          <h2 id="convert-inquiry" className="mb-5 text-lg font-bold">CRM conversion</h2>
+          <ConvertForm inquiryId={inquiry.id} />
+        </section>
+      </div>
     </div>
   </div>;
 }

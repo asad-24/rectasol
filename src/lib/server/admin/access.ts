@@ -1,14 +1,19 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { getCurrentPermissions, hasCurrentCapability } from "@/lib/server/admin/permissions";
 
-export type AdminAccess =
-  | { kind: "authorized"; user: { id: string; email: string }; role: "admin" | "super_admin" }
-  | { kind: "unauthenticated" | "forbidden" | "unavailable" };
+export type CurrentPermissions = import("@/lib/server/admin/permissions").CurrentPermissions;
 
-export async function getAdminAccess(client: SupabaseClient): Promise<AdminAccess> {
+export async function getCurrentCapabilities(client: SupabaseClient): Promise<CurrentPermissions> {
+  return getCurrentPermissions(client);
+}
+
+export { hasCurrentCapability };
+
+/** @deprecated Retained for test compatibility. M3 authorization uses getCurrentCapabilities. */
+export async function getAdminAccess(client: SupabaseClient): Promise<{ kind: string; user?: { id: string; email: string }; role?: string }> {
   try {
     const { data, error } = await client.auth.getUser();
-    if (error && (!error.status || error.status >= 500)) return { kind: "unavailable" };
     if (error || !data.user) return { kind: "unauthenticated" };
     const membership = await client.from("admin_memberships").select("role,active").eq("user_id",data.user.id).maybeSingle();
     if (membership.error) return { kind: "unavailable" };

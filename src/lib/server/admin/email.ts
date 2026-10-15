@@ -1,10 +1,22 @@
 import "server-only";
 import { z } from "zod";
 import { requireAdmin } from "@/lib/server/admin/guard";
+import { hasCurrentCapability } from "@/lib/server/admin/permissions";
 import { identifierSchema } from "@/lib/admin/validation";
+import type { PermissionGrant } from "@/lib/admin/permissions";
+import type { SupabaseClient } from "@supabase/supabase-js";
+
+const clientsReadAll: PermissionGrant = { capability: "clients.read", scope: "all" };
+
+async function ensureCanReadInquiries(client: SupabaseClient, isOwner: boolean) {
+  if (isOwner) return;
+  const allowed = await hasCurrentCapability(client, clientsReadAll);
+  if (!allowed) throw new Error("Email delivery status unavailable.");
+}
 
 export async function getInquiryEmailStatus(id: string) {
-  const { client } = await requireAdmin();
+  const { client, isOwner } = await requireAdmin();
+  await ensureCanReadInquiries(client, isOwner);
   if (!identifierSchema.safeParse(id).success) return [];
   const { data, error } = await client.from("email_outbox")
     .select("kind,status,attempts,sent_at").eq("inquiry_id", id).order("kind");

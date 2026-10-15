@@ -35,7 +35,7 @@ export async function getCurrentPermissions(client: SupabaseClient): Promise<Cur
 }
 
 /** Always requires an explicit scope. Assigned scope still needs a DB record check. */
-export async function hasCurrentCapability(client: SupabaseClient, required: PermissionGrant): Promise<boolean> {
+export async function hasCurrentCapability(client: SupabaseClient, required: { capability: string; scope: string }): Promise<boolean> {
   if (!isPermissionGrant(required?.capability, required?.scope)) return false;
   const access = await getCurrentPermissions(client);
   return access.kind === "authorized" && access.grants.some(grant =>

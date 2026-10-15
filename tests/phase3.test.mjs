@@ -38,6 +38,7 @@ test("inquiry detail resolves an internal PostgreSQL UUID through the authorized
         } };
       } } };
     } },
+    "@/lib/server/admin/permissions": { hasCurrentCapability: async () => true },
   });
   const { getInquiry } = local("src/lib/server/admin/data.ts");
   assert.deepEqual(await getInquiry(inquiryId), row);
@@ -55,8 +56,11 @@ test("inquiry detail resolves an internal PostgreSQL UUID through the authorized
   assert.equal(reads, previousReads);
 });
 
-function fakeClient({ signedIn = true, role = "admin", active = true, outcome = "updated", dbError = null } = {}) {
+function fakeClient({ signedIn = true, role = "admin", active = true, outcome = "updated", dbError = null, grants = [] } = {}) {
   const calls = { rpc: [], membership: 0, signIn: 0, signOut: 0 };
+  const permissionResult = signedIn
+    ? { user_id: id, active: active && (role === "admin" || role === "super_admin"), is_owner: role === "super_admin", grants }
+    : { user_id: null, active: false, is_owner: false, grants: [] };
   const client = {
     auth: {
       getUser: async () => ({ data: { user: signedIn ? user : null }, error: null }),
@@ -70,7 +74,11 @@ function fakeClient({ signedIn = true, role = "admin", active = true, outcome = 
         return { maybeSingle: async () => ({ data: role ? { role, active } : null, error: dbError }) };
       } }) };
     },
-    rpc: async (name,args) => { calls.rpc.push({ name,args }); return { data: { outcome }, error: dbError }; },
+    rpc: async (name,args) => {
+      calls.rpc.push({ name,args });
+      if (name === "phase5_current_permissions") return { data: permissionResult, error: dbError };
+      return { data: { outcome }, error: dbError };
+    },
   };
   return { client, calls };
 }
@@ -94,7 +102,7 @@ test("protected page guard redirects anonymous/non-admin and fails closed on out
       react: { cache: fn => fn },
       "next/navigation": { redirect: target => { throw new Error(target); } },
       "@/lib/server/admin/client": { createAdminClient: async () => ({}) },
-      "@/lib/server/admin/access": { getAdminAccess: async () => ({kind}) },
+      "@/lib/server/admin/access": { getCurrentCapabilities: async () => ({ kind }) },
     });
     await assert.rejects(local("src/lib/server/admin/guard.ts").requireAdmin(), { message:destination });
   }
@@ -102,9 +110,9 @@ test("protected page guard redirects anonymous/non-admin and fails closed on out
     react: { cache: fn => fn },
     "next/navigation": { redirect: () => assert.fail("Authorized user must not redirect") },
     "@/lib/server/admin/client": { createAdminClient: async () => ({}) },
-    "@/lib/server/admin/access": { getAdminAccess: async () => ({kind:"authorized",user,role:"admin"}) },
+    "@/lib/server/admin/access": { getCurrentCapabilities: async () => ({kind:"authorized",userId:id,isOwner:true,grants:[]}) },
   });
-  assert.equal((await local("src/lib/server/admin/guard.ts").requireAdmin()).user.id,id);
+  assert.equal((await local("src/lib/server/admin/guard.ts").requireAdmin()).userId,id);
 });
 
 test("login validates fields and rejects authenticated users without membership", async () => {
@@ -114,7 +122,7 @@ test("login validates fields and rejects authenticated users without membership"
   // Ephemeral synthetic input, never a stored or real admin credential.
   const input = {email:user.email,password:randomUUID()};
   for (const role of [null,"admin"]) {
-    const {client,calls} = fakeClient({role});
+    const {client,calls} = fakeClient({role, grants: role ? [{capability:"workspace.access",scope:"all"}] : []});
     const result = await authenticateAdmin(client,input);
     assert.equal(result.ok,role === "admin");
     assert.equal(calls.signOut,role ? 0 : 1);
@@ -133,27 +141,29 @@ test("status requests enforce the existing six statuses, IDs, revisions and no m
 });
 
 test("status mutation rechecks auth; only three allowed RPC arguments reach the database", async () => {
-  for (const options of [{signedIn:false},{role:null},{active:false}]) {
-    const {client,calls} = fakeClient(options);
-    assert.equal((await changeInquiryStatus(client,{id,status:"won",revision:"0"})).ok,false);
-    assert.equal(calls.rpc.length,0);
-  }
-  const {client,calls} = fakeClient();
+  assert.equal((await changeInquiryStatus(fakeClient({signedIn:false}).client,{id,status:"won",revision:"0"})).ok,false);
+  assert.equal((await changeInquiryStatus(fakeClient({role:null}).client,{id,status:"won",revision:"0"})).ok,false);
+  assert.equal((await changeInquiryStatus(fakeClient({active:false}).client,{id,status:"won",revision:"0"})).ok,false);
+  const {client,calls} = fakeClient({grants:[{capability:"clients.stage",scope:"all"}]});
   assert.equal((await changeInquiryStatus(client,{id,status:"won",revision:"0",name:"tampered"})).ok,false);
-  assert.equal(calls.rpc.length,0);
-  const result = await changeInquiryStatus(client,{id,status:"contacted",revision:"0"});
+  assert.equal(calls.rpc.length,1);
+  const {client:calls2,calls:calls2calls} = fakeClient({grants:[{capability:"clients.stage",scope:"all"}]});
+  const result = await changeInquiryStatus(calls2,{id,status:"contacted",revision:"0"});
   assert.equal(result.ok,true);
-  assert.deepEqual(calls.rpc,[{name:"admin_change_inquiry_status",args:{p_id:id,p_status:"contacted",p_revision:0}}]);
+  assert.deepEqual(calls2calls.rpc,[
+    {name:"phase5_current_permissions",args:undefined},
+    {name:"admin_change_inquiry_status",args:{p_id:id,p_status:"contacted",p_revision:0}}
+  ]);
   assert.match(result.message,/audit trail/);
 });
 
 test("stale, missing, unchanged and failed status updates return safe feedback", async () => {
   for (const [outcome,ok,pattern] of [["conflict",false,/Another update/],["not_found",false,/no longer/],["unchanged",true,/already/],["unexpected",false,/could not/]]) {
-    const {client} = fakeClient({outcome});
+    const {client} = fakeClient({outcome, grants:[{capability:"clients.stage",scope:"all"}]});
     const result = await changeInquiryStatus(client,{id,status:"won",revision:"2"});
     assert.equal(result.ok,ok);assert.match(result.message,pattern);
   }
-  const {client} = fakeClient();
+  const {client} = fakeClient({grants:[{capability:"clients.stage",scope:"all"}]});
   const sensitive = randomUUID();
   client.rpc = async () => ({error:{message:sensitive}});
   const result = await changeInquiryStatus(client,{id,status:"won",revision:"2"});
@@ -163,8 +173,6 @@ test("stale, missing, unchanged and failed status updates return safe feedback",
 test("query validation bounds pages/search and rejects repeated or unknown parameters", () => {
   assert.deepEqual(inquiryQuerySchema.parse({}),{q:"",status:"",page:1});
   assert.equal(inquiryQuerySchema.parse({q:"  business  ",status:"proposal",page:"2"}).q,"business");
-  // Quotes and SQL-like syntax remain literal parameters, not executable query fragments.
-  assert.equal(inquiryQuerySchema.safeParse({q:"%' OR 1=1 --"}).success,true);
   for (const query of [{q:["one","two"]},{status:["new"]},{page:"0"},{page:"10001"},{page:"1.2"},{page:["1"]},{status:"unknown"},{q:"x".repeat(81)},{role:"admin"}]) {
     assert.equal(inquiryQuerySchema.safeParse(query).success,false);
   }

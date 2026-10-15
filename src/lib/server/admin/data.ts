@@ -1,7 +1,10 @@
 import "server-only";
 import { z } from "zod";
 import { requireAdmin } from "@/lib/server/admin/guard";
+import { hasCurrentCapability } from "@/lib/server/admin/permissions";
 import { statusSchema, identifierSchema, type InquiryQuery } from "@/lib/admin/validation";
+import type { PermissionGrant } from "@/lib/admin/permissions";
+import type { SupabaseClient } from "@supabase/supabase-js";
 
 const summarySchema = z.object({
   id: identifierSchema, public_reference: z.string(), name: z.string(), email: z.string(),
@@ -14,22 +17,33 @@ const detailSchema = summarySchema.extend({
 export type InquirySummary = z.infer<typeof summarySchema>;
 export type InquiryDetail = z.infer<typeof detailSchema>;
 
+const clientsReadAll: PermissionGrant = { capability: "clients.read", scope: "all" };
+
+async function ensureCanReadInquiries(client: SupabaseClient, isOwner: boolean) {
+  if (isOwner) return;
+  const allowed = await hasCurrentCapability(client, clientsReadAll);
+  if (!allowed) throw new Error("Admin inquiry data is unavailable.");
+}
+
 export async function listInquiries(query: InquiryQuery) {
-  const { client } = await requireAdmin();
+  const { client, isOwner } = await requireAdmin();
+  await ensureCanReadInquiries(client, isOwner);
   const { data, error } = await client.rpc("admin_list_inquiries", { p_search: query.q, p_status: query.status, p_page: query.page });
   if (error) throw new Error("Admin inquiry data is unavailable.");
   return z.object({ total: z.number().int().nonnegative(), items: z.array(summarySchema).max(25) }).parse(data);
 }
 
 export async function getPipelineCounts() {
-  const { client } = await requireAdmin();
+  const { client, isOwner } = await requireAdmin();
+  await ensureCanReadInquiries(client, isOwner);
   const { data, error } = await client.rpc("admin_inquiry_counts");
   if (error) throw new Error("Admin overview is unavailable.");
   return z.array(z.object({ status: statusSchema, total: z.number().int().nonnegative() })).parse(data);
 }
 
 export async function getInquiry(id: string) {
-  const { client } = await requireAdmin();
+  const { client, isOwner } = await requireAdmin();
+  await ensureCanReadInquiries(client, isOwner);
   if (!identifierSchema.safeParse(id).success) return null;
   const { data, error } = await client.from("inquiries")
     .select("id,public_reference,name,email,company,service,budget,timeline,message,status,created_at,updated_at,revision")
@@ -39,7 +53,8 @@ export async function getInquiry(id: string) {
 }
 
 export async function getInquiryAudit(id: string) {
-  const { client } = await requireAdmin();
+  const { client, isOwner } = await requireAdmin();
+  await ensureCanReadInquiries(client, isOwner);
   if (!identifierSchema.safeParse(id).success) return [];
   const { data, error } = await client.from("admin_audit_events")
     .select("id,actor_user_id,previous_status,new_status,created_at")

@@ -265,7 +265,7 @@ try {
   await sql("m1_template", `create schema auth; create table auth.users(id uuid primary key);
     create function auth.uid() returns uuid language sql stable as $$select (nullif(current_setting('request.jwt.claims',true),'')::jsonb->>'sub')::uuid;$$;
     grant usage on schema auth to anon,authenticated,service_role;`);
-  for (const file of ["202609250001_inquiries.sql", "202609250002_admin_pipeline.sql", "202609260001_email_outbox.sql", "202609260002_brevo_email.sql", "202609300001_phase5_access.sql", "202609300002_phase5_crm.sql"]) {
+  for (const file of ["202609250001_inquiries.sql", "202609250002_admin_pipeline.sql", "202609260001_email_outbox.sql", "202609260002_brevo_email.sql", "202609300001_phase5_access.sql", "202609300002_phase5_crm.sql", "202609300003_phase5_inquiry_permissions.sql"]) {
     await sql("m1_template", readFileSync(path.join(root, "supabase/migrations", file), "utf8"));
   }
   for (const name of ["inquiries", "admin_pipeline", "email_outbox", "phase5_access", "phase5_crm"]) {
@@ -411,6 +411,59 @@ try {
   });
   // M2 schedules are added below; all databases inherit the exact six migrations.
   await runCrmScenarios();
+
+  const inquiryA = "30000000-0000-4000-8000-000000000003";
+  const inquiryB = "30000000-0000-4000-8000-000000000004";
+  async function fixture() {
+    const db = await database();
+    await sql(db, `insert into public.inquiries(id,name,email,service,message,request_hash)
+      values('${inquiryA}','Inquiry A','shared@example.invalid','web-applications','Synthetic M3 inquiry A.',repeat('a',64));
+      insert into public.inquiries(id,name,email,service,message,request_hash)
+      values('${inquiryB}','Inquiry B','shared@example.invalid','web-applications','Synthetic M3 inquiry B.',repeat('a',64));`);
+    return db;
+  }
+
+  await scenario("M3 concurrent same-email conversions converge on one active contact", async () => {
+    const db = await fixture(), [a, b] = await pair(db);
+    await a.ok("set lock_timeout='120s';"); await b.ok("set lock_timeout='120s';");
+    await a.ok("begin;"); await b.ok("begin;");
+    await a.ok(`set local request.jwt.claims='{"sub":"${owner}"}';`);
+    await b.ok(`set local request.jwt.claims='{"sub":"${owner}"}';`);
+    await a.ok(`select public.convert_inquiry_to_crm('${inquiryA}');`);
+    await new Promise(resolve => setTimeout(resolve, 100));
+    const pendingB = b.query(`select public.convert_inquiry_to_crm('${inquiryB}');`);
+    await a.ok("commit;");
+    await state(pendingB, "00000"); await b.ok("commit;");
+    assert.equal(await sql(db, `select count(*) from public.crm_contacts where email='shared@example.invalid' and archived_at is null;`), "1");
+    assert.equal(await sql(db, `select count(*) from public.crm_inquiry_links where inquiry_id in ('${inquiryA}','${inquiryB}');`), "2");
+    assert.equal(await sql(db, `select count(distinct contact_id) from public.crm_inquiry_links where inquiry_id in ('${inquiryA}','${inquiryB}');`), "1");
+    assert.equal(await sql(db, "select count(*) from public.crm_opportunities;"), "0");
+    assert.equal(await sql(db, `select status from public.inquiries where id='${inquiryA}';`), "new");
+    assert.equal(await sql(db, `select status from public.inquiries where id='${inquiryB}';`), "new");
+  });
+
+  await scenario("M3 archived contact with shared email blocks conversion after concurrent active creation", async () => {
+    const db = await database();
+    await sql(db, `insert into public.inquiries(id,name,email,service,message,request_hash)
+      values('${inquiryA}','Archived A','archived@example.invalid','web-applications','Synthetic M3 archived A.',repeat('a',64));
+      insert into public.inquiries(id,name,email,service,message,request_hash)
+      values('${inquiryB}','Archived B','archived@example.invalid','web-applications','Synthetic M3 archived B.',repeat('a',64));`);
+    const [a, b] = await pair(db);
+    await a.ok("set lock_timeout='120s';"); await b.ok("set lock_timeout='120s';");
+    await a.ok("begin;"); await b.ok("begin;");
+    await a.ok(`set local request.jwt.claims='{"sub":"${owner}"}';`);
+    await b.ok(`set local request.jwt.claims='{"sub":"${owner}"}';`);
+    await a.ok(`select public.convert_inquiry_to_crm('${inquiryA}');`);
+    await new Promise(resolve => setTimeout(resolve, 100));
+    const pendingB = b.query(`select public.convert_inquiry_to_crm('${inquiryB}');`);
+    await a.ok(`update public.crm_contacts set archived_at=clock_timestamp() where email='archived@example.invalid' and archived_at is null;`);
+    await a.ok("commit;");
+    await state(pendingB, "00000"); await b.ok("commit;");
+    assert.equal(await sql(db, `select count(*) from public.crm_contacts where email='archived@example.invalid' and archived_at is null;`), "0");
+    assert.equal(await sql(db, `select count(*) from public.crm_contacts where email='archived@example.invalid';`), "1");
+    assert.equal(await sql(db, `select count(*) from public.crm_inquiry_links where inquiry_id='${inquiryB}';`), "0");
+  });
+
   console.log(`PASS ${passed} native multi-session scenarios; five SQL suites. No hosted services contacted.`);
 } catch (error) {
   console.error(error instanceof Error ? error.message : "Native concurrency verification failed");

@@ -350,7 +350,7 @@ test("admin email status uses the authorized client and only safe delivery colum
         }};
       }};
     }}};
-  }}});
+  }},"@/lib/server/admin/permissions":{hasCurrentCapability:async()=>true}});
   const {getInquiryEmailStatus}=local("src/lib/server/admin/email.ts");
   assert.deepEqual(await getInquiryEmailStatus(id),rows);
   assert.deepEqual(await getInquiryEmailStatus("bad"),[]);
